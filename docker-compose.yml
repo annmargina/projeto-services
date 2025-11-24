@@ -1,0 +1,97 @@
+services:
+  # Redis service for storing operation history
+  redis:
+    image: redis:7-alpine
+    container_name: projeto-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - projeto-network
+
+  # Spring Boot service - stores operation history in Redis
+  bootstorage:
+    build:
+      context: ./bootstorage
+      dockerfile: Dockerfile.multi
+    container_name: projeto-bootstorage
+    ports:
+      - "5000:5000"
+    environment:
+      - BOOTSTORAGE_PORT=5000
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - projeto-network
+    restart: unless-stopped
+
+  # Express.js service - handles addition & subtraction
+  expressed:
+    build:
+      context: ./expressed
+      dockerfile: Dockerfile
+    container_name: projeto-expressed
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - BOOTSTORAGE_URL=http://bootstorage:5000
+    depends_on:
+      - bootstorage
+    networks:
+      - projeto-network
+    restart: unless-stopped
+
+  # Hapi.js service - handles multiplication & division
+  happy:
+    build:
+      context: ./happy
+      dockerfile: Dockerfile
+    container_name: projeto-happy
+    ports:
+      - "4000:4000"
+    environment:
+      - NODE_ENV=production
+      - BOOTSTORAGE_URL=http://bootstorage:5000
+    depends_on:
+      - bootstorage
+    networks:
+      - projeto-network
+    restart: unless-stopped
+
+  # Vue.js frontend - calculator UI
+  vuecalc:
+    build:
+      context: ./vuecalc
+      dockerfile: Dockerfile
+    container_name: projeto-vuecalc
+    ports:
+      - "2000:2000"
+    environment:
+      - NODE_ENV=production
+    depends_on:
+      - expressed
+      - happy
+      - bootstorage
+    networks:
+      - projeto-network
+    restart: unless-stopped
+
+networks:
+  projeto-network:
+    driver: bridge
+
+volumes:
+  redis-data:
+    driver: local
